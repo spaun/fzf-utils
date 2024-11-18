@@ -1,0 +1,106 @@
+#!/bin/sh
+
+function _clear_preview() {
+  if [ -n "$KITTY_WINDOW_ID" ]; then
+    kitty icat --clear --stdin=no --transfer-mode=memory
+  fi
+}
+
+function _view_text() {
+  _clear_preview
+  bat --color=always --style=numbers --line-range=:500 "$1"
+}
+
+function _view_pdf() {
+  if ! command -v pdftocairo > /dev/null ; then
+    _view_binary $1
+    return
+  fi
+
+  dim="${FZF_PREVIEW_COLUMNS}x${FZF_PREVIEW_LINES}"
+  if [ $dim = "x" ]; then
+    dim=$(stty size | tr " " "x")
+  fi
+
+  conv="pdftocairo -q -singlefile -scale-to 300 -png"
+  if [ -n "$KITTY_WINDOW_ID" ]; then
+    $conv "$1" - | kitty icat --clear --unicode-placeholder \
+      --transfer-mode=memory --stdin=yes --place="$dim@0x0"
+  elif command -v chafa > /dev/null ; then
+    $conv "$1" - | chafa -s "$dim"
+  else
+    _view_binary "$1"
+  fi
+}
+
+function _view_image() {
+  dim="${FZF_PREVIEW_COLUMNS}x${FZF_PREVIEW_LINES}"
+  if [ $dim = "x" ]; then
+    dim=$(stty size | tr " " "x")
+  fi
+
+  if [ -n "$KITTY_WINDOW_ID" ]; then
+    kitty icat --clear --unicode-placeholder --transfer-mode=memory \
+      --stdin=no --place="$dim@0x0" "$1"
+  elif command -v chafa > /dev/null ; then
+    chafa -s "$dim" "$1"
+  else
+    _view_binary "$1"
+  fi
+}
+
+function _view_binary() {
+  _clear_preview
+  file --brief "$1"
+}
+
+function _dispatch_preview() {
+  if [ ! -e "$1" ]; then
+    echo "File or directory not found"
+    exit 127
+  fi
+  
+  FN="$1"
+  TYPE=$(file --brief --dereference --mime "$FN")
+  
+  case "$TYPE" in 
+    inode/directory* ) ;;
+    *=binary | application/pdf* )
+      T=$([ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && command -v gnome-thumb-getter > /dev/null && gnome-thumb-getter "$FN")
+      if [ ! -z "$T" ] && [ -f "$T" ]; then
+        FN="$T"
+        TYPE="image/thumb"
+      fi
+  esac
+  
+  case "$TYPE" in
+    inode/directory* ) tree -C "$FN" ;;
+    text/* | application/json* | application/javascript* ) _view_text "$FN" ;;
+    image/* ) _view_image "$FN" ;;
+    application/pdf* ) _view_pdf "$FN" ;;
+    * ) _view_binary "$FN" ;;
+  esac
+}
+
+function _integrate_bash() {
+  cat <<- "FUNC"
+    function ffd() {
+      fd "$@" | fzf --preview 'fzf-plus --preview {}' \
+        --preview-window 'right,border-left,hidden,<50(up,30%,border-bottom,hidden)' \
+        --reverse --height=50% --border top --border \
+        --bind "ctrl-/:toggle-preview" \
+        --bind "ctrl-o:execute-silent(printf '%s\0' {+} | xargs -n1 -0 ${OPENER:-xdg-open})" \
+        --bind "alt-o:become(${EDITOR:-vim} {+})" \
+        --bind "alt-<:first" --bind "alt->:last" --multi
+    }
+FUNC
+}
+
+case "$1" in
+  "--preview" ) _dispatch_preview "$2" ;;
+  "--bash" ) _integrate_bash ;;
+  * )
+    cmd=$(basename $0)
+    echo "Usage: $cmd --preview <filename>"
+    echo "       $cmd --bash"
+esac
