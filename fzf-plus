@@ -66,7 +66,7 @@ function _dispatch_preview() {
   case "$TYPE" in 
     inode/directory* ) ;;
     *=binary | application/pdf* )
-      T=$([ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && command -v gnome-thumb-getter > /dev/null && gnome-thumb-getter "$FN")
+      T=$([ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && command -v gnome-thumb-getter > /dev/null && gnome-thumb-getter -q "$FN")
       if [ ! -z "$T" ] && [ -f "$T" ]; then
         FN="$T"
         TYPE="image/thumb"

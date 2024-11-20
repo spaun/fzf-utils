@@ -1,26 +1,30 @@
 #!/usr/bin/env python
 
+import argparse
 import os
 import sys
-import gi
 
-gi.require_version('GnomeDesktop', '4.0')
 
-from gi.repository import Gio, GnomeDesktop
+def get_or_make_thumb(path, force=False):
+    import gi
 
-def get_or_make_thumb(path):
-    factory = GnomeDesktop.DesktopThumbnailFactory.new(GnomeDesktop.DesktopThumbnailSize.XLARGE)
+    gi.require_version("GnomeDesktop", "4.0")
+
+    from gi.repository import Gio, GnomeDesktop
+
+    factory = GnomeDesktop.DesktopThumbnailFactory.new(
+        GnomeDesktop.DesktopThumbnailSize.XLARGE
+    )
     f = Gio.file_new_for_path(path)
     uri = f.get_uri()
     mtime = os.path.getmtime(path)
 
     thumb = factory.lookup(uri, mtime)
 
-    if thumb is not None:
+    if thumb is not None and not force:
         return thumb
 
-    info = f.query_info(
-        "standard::content-type", Gio.FileQueryInfoFlags.NONE, None)
+    info = f.query_info("standard::content-type", Gio.FileQueryInfoFlags.NONE, None)
     mime_type = info.get_content_type()
 
     if not factory.can_thumbnail(uri, mime_type, mtime):
@@ -35,14 +39,38 @@ def get_or_make_thumb(path):
 
     return factory.lookup(uri, mtime)
 
+
 def main(argv):
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("filename", help="name of file to get thumnail for")
+    parser.add_argument(
+        "-f",
+        "--force",
+        help="force thumbnail creation even if it already exists",
+        action="store_true",
+    )
+    parser.add_argument(
+        "-q", "--quiet", help="do not report any errors", action="store_true"
+    )
+
+    args = parser.parse_args()
+
     thumb = None
 
-    if os.path.isfile(argv[1]):
-        thumb = get_or_make_thumb(argv[1])
+    try:
+        if not os.path.isfile(args.filename):
+            raise FileNotFoundError(f"file not found '{args.filename}'")
+
+        thumb = get_or_make_thumb(args.filename, args.force)
+    except Exception as err:
+        if not args.quiet:
+            print(f"Error: {err}", end="\n", file=sys.stderr)
+        return 127
 
     if thumb is not None:
-        print(thumb, end='\n')
+        print(thumb, end="\n")
+
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))
