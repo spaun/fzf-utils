@@ -1,19 +1,19 @@
 #!/bin/sh
 
-function _clear_preview() {
+function __clear_preview() {
   if [ -n "$KITTY_WINDOW_ID" ]; then
     kitty icat --clear --stdin=no --transfer-mode=memory
   fi
 }
 
-function _view_text() {
-  _clear_preview
+function __view_text() {
+  __clear_preview
   bat --color=always --style=numbers --line-range=:500 "$1"
 }
 
-function _view_pdf() {
+function __view_pdf() {
   if ! command -v pdftocairo > /dev/null ; then
-    _view_binary $1
+    __view_binary $1
     return
   fi
 
@@ -29,11 +29,11 @@ function _view_pdf() {
   elif command -v chafa > /dev/null ; then
     $conv "$1" - | chafa -s "$dim"
   else
-    _view_binary "$1"
+    __view_binary "$1"
   fi
 }
 
-function _view_image() {
+function __view_image() {
   dim="${FZF_PREVIEW_COLUMNS}x${FZF_PREVIEW_LINES}"
   if [ $dim = "x" ]; then
     dim=$(stty size | tr " " "x")
@@ -45,16 +45,16 @@ function _view_image() {
   elif command -v chafa > /dev/null ; then
     chafa -s "$dim" "$1"
   else
-    _view_binary "$1"
+    __view_binary "$1"
   fi
 }
 
-function _view_binary() {
-  _clear_preview
+function __view_binary() {
+  __clear_preview
   file --brief "$1"
 }
 
-function _dispatch_preview() {
+function __dispatch_preview() {
   if [ ! -e "$1" ]; then
     echo "File or directory not found"
     exit 127
@@ -75,14 +75,14 @@ function _dispatch_preview() {
   
   case "$TYPE" in
     inode/directory* ) tree -C "$FN" ;;
-    text/* | application/json* | application/javascript* ) _view_text "$FN" ;;
-    image/* ) _view_image "$FN" ;;
-    application/pdf* ) _view_pdf "$FN" ;;
-    * ) _view_binary "$FN" ;;
+    text/* | application/json* | application/javascript* ) __view_text "$FN" ;;
+    image/* ) __view_image "$FN" ;;
+    application/pdf* ) __view_pdf "$FN" ;;
+    * ) __view_binary "$FN" ;;
   esac
 }
 
-function _integrate_bash() {
+function __integrate_bash() {
   cat <<- "FUNC"
     function ffd() {
       fd "$@" | fzf --preview 'fzf-plus --preview {}' \
@@ -97,8 +97,8 @@ FUNC
 }
 
 case "$1" in
-  "--preview" ) _dispatch_preview "$2" ;;
-  "--bash" ) _integrate_bash ;;
+  "--preview" ) __dispatch_preview "$2" ;;
+  "--bash" ) __integrate_bash ;;
   * )
     cmd=$(basename $0)
     echo "Usage: $cmd --preview <filename>"
