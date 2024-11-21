@@ -13,8 +13,7 @@ function __view_text() {
 
 function __view_pdf() {
   if ! command -v pdftocairo > /dev/null ; then
-    __view_binary $1
-    return
+    return 1
   fi
 
   dim="${FZF_PREVIEW_COLUMNS}x${FZF_PREVIEW_LINES}"
@@ -25,12 +24,12 @@ function __view_pdf() {
   conv="pdftocairo -q -singlefile -scale-to 300 -png"
   if [ -n "$KITTY_WINDOW_ID" ]; then
     $conv "$1" - | kitty icat --clear --unicode-placeholder \
-      --transfer-mode=memory --stdin=yes --place="$dim@0x0"
+      --transfer-mode=memory --stdin=yes --place="$dim@0x0" && return
   elif command -v chafa > /dev/null ; then
-    $conv "$1" - | chafa -s "$dim"
-  else
-    __view_binary "$1"
+    $conv "$1" - | chafa -s "$dim" && return
   fi
+
+  return 1
 }
 
 function __view_image() {
@@ -41,17 +40,27 @@ function __view_image() {
 
   if [ -n "$KITTY_WINDOW_ID" ]; then
     kitty icat --clear --unicode-placeholder --transfer-mode=memory \
-      --stdin=no --place="$dim@0x0" "$1"
+      --stdin=no --place="$dim@0x0" "$1" && return
   elif command -v chafa > /dev/null ; then
-    chafa -s "$dim" "$1"
-  else
-    __view_binary "$1"
+    chafa -s "$dim" "$1" && return
   fi
+
+  return 1
 }
 
-function __view_binary() {
+function __view_file_info() {
   __clear_preview
   file --brief "$1"
+}
+
+function __view_thumbnail() {
+  T=$([ -n "$THUMBNAILER" ]  && "$THUMBNAILER" "$1")
+
+  if [ -n "$T" ] && [ -f "$T" ]; then
+    __view_image "$T" && return
+  fi
+
+  return 1
 }
 
 function __dispatch_preview() {
@@ -59,26 +68,24 @@ function __dispatch_preview() {
     echo "File or directory not found"
     exit 127
   fi
-  
-  FN="$1"
-  TYPE=$(file --brief --dereference --mime "$FN")
-  
-  case "$TYPE" in 
-    inode/directory* ) ;;
-    *=binary | application/pdf* )
-      T=$([ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && command -v gnome-thumb-getter > /dev/null && gnome-thumb-getter -q "$FN")
-      if [ ! -z "$T" ] && [ -f "$T" ]; then
-        FN="$T"
-        TYPE="image/thumb"
-      fi
-  esac
-  
+
+  TYPE=$(file --brief --dereference --mime "$1")
+
   case "$TYPE" in
-    inode/directory* ) tree -C "$FN" ;;
-    text/* | application/json* | application/javascript* ) __view_text "$FN" ;;
-    image/* ) __view_image "$FN" ;;
-    application/pdf* ) __view_pdf "$FN" ;;
-    * ) __view_binary "$FN" ;;
+    inode/directory* )
+      tree -C "$1"
+      ;;
+    text/* | application/json* | application/javascript* )
+      __view_text "$1"
+      ;;
+    image/* )
+      __view_image "$1" || __view_file_info "$1"
+      ;;
+    application/pdf* )
+      __view_thumbnail "$1" ||  __view_pdf "$1" || __view_file_info "$1"
+      ;;
+    * )
+      __view_thumbnail "$1" || __view_file_info "$1"
   esac
 }
 
